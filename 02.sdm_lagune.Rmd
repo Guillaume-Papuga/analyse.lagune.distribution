@@ -1,0 +1,101 @@
+---
+title: "02.sdm_lagune"
+author: "Guillaume Papuga"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE, include=FALSE, message=FALSE, warning=FALSE)
+```
+
+```{r packages}
+library (tidyverse)
+library (ade4)
+library (here)
+library (stringr)
+library (ade4)
+library (dismo)
+library (mapdata)
+library (maps)
+library (maptools)
+library (raster)
+library (rgdal)
+library (rgeos)
+library (sdm)
+library (sp)
+library (usdm) 
+```
+
+# Loading data
+First of all, you need to run the rMarkdown document named "01.import_format_data.Rmd" to load all the data in the R session
+- 1. ecological variables are grouped into a stacked raster named `ecov`
+- 2. p-a data from GIS handmade points are grouped in a spatial point file named `tab.pa`
+- 3. p-a date with complete habitat structure (to distinguish one habitat from another) are to be created
+
+
+```{r load data}
+```
+
+
+# PART I : simple GLM procedure (handmade)
+
+## 1. data mining
+```{r data mining}
+# A first glimpse into data structure
+#. Extract values from the rasterstack
+e1 = raster::extract(ecov, tab.pa)# extract values from a raster (our environmental layers) at the location of specie
+df = cbind(tab.pa@data, e1) # attach the presence-absence data to the data
+
+
+```
+
+
+## 2. variable selection
+
+
+## 3. model
+```{r}
+# 1. Split the data set
+
+# 2. Run the model
+m1 <- glm(lag ~ hydroperiod_sep2018_sep2019 +
+                I(hydroperiod_sep2018_sep2019^2) + 
+                MSAVI2_20m_T31TEJ_20190513, 
+          data = df, family = "binomial")
+summary(m1)
+
+pred.glm = predict (ecov, m1, type = "response")
+plot(pred.glm)
+
+writeRaster(x = pred.glm, 
+            filename = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/raw.res/test.pred.glm3.tif")
+# add points
+df.sp1 = as.data.frame(sp1)
+points (df.sp1[which (df.sp1$Occurrence == 1), c(2,3)], 
+        pch = 16, col = "red", cex = 0.5)
+points (df.sp1[which (df.sp1$Occurrence == 0), c(2,3)], 
+        pch = 16, col = "blue", cex = 0.3)
+
+# 3. evaluate the model
+```
+
+
+
+
+
+
+
+
+
+# PART II : **sdm** package procedure
+
+
+
+
+
+
+
+
+
+

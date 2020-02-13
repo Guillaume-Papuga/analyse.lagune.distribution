@@ -1,7 +1,7 @@
 ---
 title: "01.import_format_data"
 author: "Guillaume Papuga"
-date: "11/02/2020"
+date: "`r Sys.Date()`"
 output: html_document
 ---
 
