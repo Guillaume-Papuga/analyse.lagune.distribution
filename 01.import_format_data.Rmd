@@ -1,0 +1,208 @@
+---
+title: "01.import_format_data"
+author: "Guillaume Papuga"
+date: "11/02/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+require(here)
+library(tidyverse)
+library(stringr)
+library(raster)
+library(rgdal)
+library(sf) #shapefile
+```
+
+
+# Introduction
+## Article
+Data processed in this file belongs to a project that aims at mapping the distribution of Mediterranean temporary lagoons. 
+
+
+## Format
+This document is used to format data. No analysis is coded here.
+All data names once processed follow the form d.something (d stands for "data", and the second part must clearly refer to the type of data).
+
+## Environmental variables (section 1.)
+The aim of this section is to format all the environment variables. They are spatial layers (rasters) that require some pre-processing to perform spatial analysis
+
+## Occurences (section 2.)
+The aim of this section is to build a database of occurence to train the model. We used different strategies to sample pixels based on known occurences of mediterranean temporary lagoon 
+
+# 1. Environmental data
+The aim is to format X dataset : 
+- hydroperiod (hydrological temporality based on Tour du Valat index - Sentinel 2 images)
+- msavi.may (M-Savi2 index of the may image)
+- msavi.spring (average value of M-Savi2 during the vegetative period from february to june)
+- mnt (altitude based on the the original MNT)
+- distance to shore and major salt-water body (calculated from a vector file)
+
+We use the **hydroperiod** layer as a basis to define the cell size.
+
+## a. Download the base layer
+```{r}
+## hydroperiod
+## 1. Upload from external drive
+source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/" # folder path
+var.name = "hydroperiod_sep2018_sep2019.tif" # name of the variable in the initial folder
+var.path.name = as.vector(paste (source, var.name, sep="")) # paste the right name
+hydroperiod = raster(var.path.name)
+```
+
+## b. Define the basic setting of raster layers
+```{r}
+## Set the basic parameters
+# each time you want to stack data, you have to respect the same PER : PROJECTION - EXTENT - RESOLUTION
+# it's called the standard settings of the project and it's p.
+
+# Same projection
+p.proj = "+proj=longlat +datum=WGS84"
+projection(hydroperiod) # read the projection definition (raster dataset)
+
+# Same extent
+p.extent = extent(hydroperiod)
+
+# Same resolution 
+p.res = res(hydroperiod)
+```
+
+## c. Correct the projection of the hydroperiod layer
+```{r}
+hydroperiod.wgs = projectRaster(hydroperiod,
+                                  crs = p.proj) # change the CRS of the raster to WGS84
+```
+
+
+## d. Upload all other data
+### msavi.may
+```{r}
+## msavi.may
+## 1. Upload from external drive
+source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/MSAVI2/" # folder path
+var.name = "MSAVI2_20m_T31TEJ_20190513.tif" # name of the variable in the initial folder
+var.path.name = as.vector(paste (source, var.name, sep="")) # paste the right name
+msavi.may = raster(var.path.name)
+
+## 2. Check and convert (if needed) the raster layer
+# Same projection
+projection(msavi.may) # read the projection definition (raster dataset)
+msavi.may.wgs = projectRaster(msavi.may,
+                              crs = p.proj) 
+
+# Same extent
+extent(msavi.may.wgs)
+
+# Same resolution 
+res(msavi.may.wgs)
+
+##if the cell size is not the same, you need to convert it
+# a. change the pixel size with aggregate or disaggregate
+
+# b. resample the value with resample () (package raster)
+
+# test = projectRaster(bioclim.var, crs = p.proj) # transform the projection into a new one (raster dataset)
+```
+
+### msavi.spring
+
+
+
+### Environment-data stack
+```{r}
+# Ecological variables
+## Stack all files together
+## This is a way to check that everything has been done carefully and raster layers are compatible
+
+ecov = stack (hydroperiod.wgs, 
+              msavi.may.wgs)
+```
+
+
+
+
+# 2. Load Mediterranean Temporary Lagoon (MTL) data
+## a. Dataset structure
+```{r}
+# The matrix is named `d.lag` and must contain 6 columns
+# pix.id : indefinite pixel code (dataset specific)
+# had.id : identifica
+# date : the date (yyyymmdd)
+# x : coordinate on the x-axis (longitude in decimal degree)
+# y : coordinate on the y-axis (latitude in decimal degree)
+# precision : precision of the location (expressed in meter)
+# source : explicit name of the source of the imported dataset
+
+d.lag = as.data.frame(matrix (ncol = 7,nrow = 0))
+colnames (d.occ) = c("code.pop", "sp.name", "date", "x", "y", "precision", "source")
+```
+
+
+## b. Hand pointed data (presence)
+```{r}
+# load raw data
+## 1. Upload from external drive
+source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/" # folder path
+var.name = "lag.temp.shp" # name of the variable in the initial folder
+var.path.name = as.vector(paste (source, var.name, sep="")) # paste the right name
+psce = st_read(var.path.name)
+
+## 2. Check and convert (if needed) the raster layer
+# Same projection
+projection(psce) # read the projection definition (raster dataset)
+psce.wgs = st_transform(psce, p.proj)
+```
+
+This dataset contains `r nb.row` populations.
+
+## b. Random absence data
+```{r}
+# load raw data
+## 1. Upload from external drive
+source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/" # folder path
+var.name = "absence.shp" # name of the variable in the initial folder
+var.path.name = as.vector(paste (source, var.name, sep="")) # paste the right name
+abs = st_read(var.path.name)
+
+## 2. Check and convert (if needed) the raster layer
+# Same projection
+projection(abs) # read the projection definition (raster dataset)
+abs.wgs = abs
+```
+
+## c. Synthese
+```{r}
+# convert each spatial layer into a dataframe
+tab.abs.wgs = as.data.frame (cbind (st_coordinates(abs.wgs), # coordinates of each point in the vector
+                                    rep(0, nrow(abs.wgs)))) # 1-0 lagoon value
+tab.psce.wgs = as.data.frame (cbind (st_coordinates(psce.wgs), 
+                                    rep(1, nrow(psce.wgs))))
+tab.pa = rbind (tab.abs.wgs, tab.psce.wgs) # bind the two tables
+colnames (tab.pa) = c("x", "y", "lag") # change columns name
+tab.pa = (tab.pa[complete.cases(tab.pa), ]) # remove NA
+
+# transform the matrix into a spatial point file
+coordinates (tab.pa) = ~x*y # the name of the x and y columns
+proj4string (tab.pa) = p.proj # attributes a projection for the object, it DOES NOT reproject
+spplot(tab.pa) # plot the spatial data with attributes
+```
+
+
+## b. Polygon data
+
+## 3. Synthesis
+```{r}
+# Copy and paste each dataset on the basic matrix
+d.occ = rbind(d.occ, d.occ.cbn)
+
+# Eliminate duplicates
+d.occ = unique (d.occ)
+
+# write data in the "processed" folder
+write.table (x = d.occ, here::here("data","processed","d.occ.conv.lan.txt"), sep = ";", dec = ".")
+```
+
