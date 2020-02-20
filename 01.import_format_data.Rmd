@@ -16,13 +16,28 @@ library(stringr)
 library(raster)
 library(rgdal)
 library(sf) #shapefile
+library(dismo)
 ```
 
+
+# Pense bête - a faire
+## variables
+- la temporalité de l'eau, sur 1 an et 3 ans (moyenne) 
+- le MSAVI. Dans l'idéal, il faudrait qu'on fasse un petit bilan des indices de productivité végétale (MSAVI, MSAVI2, NDVI, autre...?) pour pouvoir choisir le plus approprié (voir les comparer?)
+- raster d'altitude MNT : joindre les couches + mise au bon format
+- raster de distance aux masses d'eau salée permanente (mer + lagunes d'une taille > 1 ha, à définir) : faire une couche vecteur, calculer distance aux entités, remettre à la bonne ehcelle 
+- faire un masque d'eau permanente (ajouter pixels de bordure)
+
+- presence : faire une couche vecteur + extraire les données contenues dedans
+
+## code
+- faire les graphiques de réponse par variable (ordonnée 1-0)
+- implémenter différents algo dans SDM
+- lisser le code
 
 # Introduction
 ## Article
 Data processed in this file belongs to a project that aims at mapping the distribution of Mediterranean temporary lagoons. 
-
 
 ## Format
 This document is used to format data. No analysis is coded here.
@@ -34,15 +49,7 @@ The aim of this section is to format all the environment variables. They are spa
 ## Occurences (section 2.)
 The aim of this section is to build a database of occurence to train the model. We used different strategies to sample pixels based on known occurences of mediterranean temporary lagoon 
 
-# 1. Environmental data
-The aim is to format X dataset : 
-- hydroperiod (hydrological temporality based on Tour du Valat index - Sentinel 2 images)
-- msavi.may (M-Savi2 index of the may image)
-- msavi.spring (average value of M-Savi2 during the vegetative period from february to june)
-- mnt (altitude based on the the original MNT)
-- distance to shore and major salt-water body (calculated from a vector file)
-
-We use the **hydroperiod** layer as a basis to define the cell size.
+# Pre-processing
 
 ## a. Download the base layer
 ```{r}
@@ -78,54 +85,7 @@ hydroperiod.wgs = projectRaster(hydroperiod,
 ```
 
 
-## d. Upload all other data
-### msavi.may
-```{r}
-## msavi.may
-## 1. Upload from external drive
-source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/MSAVI2/" # folder path
-var.name = "MSAVI2_20m_T31TEJ_20190513.tif" # name of the variable in the initial folder
-var.path.name = as.vector(paste (source, var.name, sep="")) # paste the right name
-msavi.may = raster(var.path.name)
-
-## 2. Check and convert (if needed) the raster layer
-# Same projection
-projection(msavi.may) # read the projection definition (raster dataset)
-msavi.may.wgs = projectRaster(msavi.may,
-                              crs = p.proj) 
-
-# Same extent
-extent(msavi.may.wgs)
-
-# Same resolution 
-res(msavi.may.wgs)
-
-##if the cell size is not the same, you need to convert it
-# a. change the pixel size with aggregate or disaggregate
-
-# b. resample the value with resample () (package raster)
-
-# test = projectRaster(bioclim.var, crs = p.proj) # transform the projection into a new one (raster dataset)
-```
-
-### msavi.spring
-
-
-
-### Environment-data stack
-```{r}
-# Ecological variables
-## Stack all files together
-## This is a way to check that everything has been done carefully and raster layers are compatible
-
-ecov = stack (hydroperiod.wgs, 
-              msavi.may.wgs)
-```
-
-
-
-
-# 2. Load Mediterranean Temporary Lagoon (MTL) data
+# 1. Load Mediterranean Temporary Lagoon (MTL) data
 ## a. Dataset structure
 ```{r}
 # The matrix is named `d.lag` and must contain 6 columns
@@ -159,8 +119,19 @@ psce.wgs = st_transform(psce, p.proj)
 
 This dataset contains `r nb.row` populations.
 
-## b. Random absence data
+## b. Study Area (Polygon)
 ```{r}
+# circles with a radius of 50 km
+tab.psce.wgs = as.data.frame (cbind (st_coordinates(psce.wgs), 
+                                    rep(1, nrow(psce.wgs))))
+x = circles(tab.psce.wgs[,1:2], d=5000, lonlat=TRUE) 
+## Loading required namespace: rgeos 
+study.area = polygons(x)
+```
+
+
+## c. Random absence data
+#```{r}
 # load raw data
 ## 1. Upload from external drive
 source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/" # folder path
@@ -168,21 +139,47 @@ var.name = "absence.shp" # name of the variable in the initial folder
 var.path.name = as.vector(paste (source, var.name, sep="")) # paste the right name
 abs = st_read(var.path.name)
 
-## 2. Check and convert (if needed) the raster layer
+## 2. Check and convert (if needed) the vector layer
 # Same projection
 projection(abs) # read the projection definition (raster dataset)
 abs.wgs = abs
+#```
+
+```{r}
+# create background data
+bg = spsample(study.area, 5000, type='random', iter=25)
 ```
+
+
 
 ## c. Synthese
 ```{r}
 # convert each spatial layer into a dataframe
-tab.abs.wgs = as.data.frame (cbind (st_coordinates(abs.wgs), # coordinates of each point in the vector
-                                    rep(0, nrow(abs.wgs)))) # 1-0 lagoon value
 tab.psce.wgs = as.data.frame (cbind (st_coordinates(psce.wgs), 
                                     rep(1, nrow(psce.wgs))))
+
+tab.abs.wgs = cbind (as.data.frame (bg), # coordinates of each point in the vector
+                    rep(0, nrow(as.data.frame (bg)))) # 1-0 lagoon value
+
+# delete duplicate btw datasets
+cells.p = cellFromXY(hydroperiod.wgs, st_coordinates(psce.wgs)) # cell n°
+cells.p = unique (cells.p)
+
+cells.a = cellFromXY(hydroperiod.wgs, as.data.frame (bg)) # cell n°
+cells.a = unique (cells.a)
+
+cells = setdiff(cells.a, cells.p) # identify cells specific from a
+
+tab.abs.wgs = tab.abs.wgs %>%
+  mutate (cell.n = cellFromXY(hydroperiod.wgs, as.data.frame (bg))) %>% # add the column
+  distinct(cell.n, .keep_all = TRUE) %>% # eliminate duplicate
+  filter(cell.n %in% cells) # select in the cells list
+tab.abs.wgs = tab.abs.wgs[,-4] # delete the cell column
+
+# rbind the two datasets
+colnames (tab.abs.wgs) = c("x", "y", "lag") # change columns name
+colnames (tab.psce.wgs) = c("x", "y", "lag") # change columns name
 tab.pa = rbind (tab.abs.wgs, tab.psce.wgs) # bind the two tables
-colnames (tab.pa) = c("x", "y", "lag") # change columns name
 tab.pa = (tab.pa[complete.cases(tab.pa), ]) # remove NA
 
 # transform the matrix into a spatial point file
@@ -192,17 +189,99 @@ spplot(tab.pa) # plot the spatial data with attributes
 ```
 
 
-## b. Polygon data
+## d. Polygon data coming soon
 
-## 3. Synthesis
+
+
+
+
+# 2. Environmental data
+The aim is to format X dataset : 
+- hydroperiod (hydrological temporality based on Tour du Valat index - Sentinel 2 images)
+- msavi.spring (**median** value of M-Savi2 during the vegetative period from february to june)
+- msavi.july (M-Savi2 index of the july image)
+- mnt (altitude based on the the original MNT)
+- distance to shore and major salt-water body (calculated from a vector file)
+
+We use the **hydroperiod** layer as a basis to define the cell size.
+
+## d. Upload all other data
+### msavi.spring
 ```{r}
-# Copy and paste each dataset on the basic matrix
-d.occ = rbind(d.occ, d.occ.cbn)
+## msavi.spring
+## 1. Upload from external drive
+source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/MSAVI2/" # folder path
+lst = list.files(path = source, pattern='tif$') [6:13] # list all the file and keep the spring ones
+st = stack (as.list(paste (source, lst, sep=""))) # create the raster stack
+r_median = calc(st, median) # take the median of the serie
 
-# Eliminate duplicates
-d.occ = unique (d.occ)
+## 2. Check and convert (if needed) the raster layer
+# Same projection
+projection(r_median) # read the projection definition (raster dataset)
+r_median.wgs = projectRaster(r_median, 
+                             crs = p.proj) # reproject
 
-# write data in the "processed" folder
-write.table (x = d.occ, here::here("data","processed","d.occ.conv.lan.txt"), sep = ";", dec = ".")
+# Same extent
+extent(r_median.wgs)
+
+# Same resolution 
+res(r_median.wgs)
+
+##if the cell size is not the same, you need to convert it
+# a. change the pixel size with aggregate or disaggregate
+
+# b. resample the value with resample () (package raster)
+
+# test = projectRaster(bioclim.var, crs = p.proj) # transform the projection into a new one (raster dataset)
 ```
+
+### msavi.july
+```{r}
+## msavi.july
+## 1. Upload from external drive
+source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/MSAVI2/" # folder path
+var.name = "MSAVI2_20m_T31TEJ_20190722.tif" # name of the variable in the initial folder
+var.path.name = as.vector(paste (source, var.name, sep="")) # paste the right name
+msavi.july = raster(var.path.name)
+
+## 2. Check and convert (if needed) the raster layer
+# Same projection
+projection(msavi.july) # read the projection definition (raster dataset)
+msavi.july.wgs = projectRaster(msavi.july,
+                               crs = p.proj) 
+
+# Same extent
+extent(msavi.july.wgs)
+
+# Same resolution 
+res(msavi.july.wgs)
+
+##if the cell size is not the same, you need to convert it
+# a. change the pixel size with aggregate or disaggregate
+
+# b. resample the value with resample () (package raster)
+
+# test = projectRaster(bioclim.var, crs = p.proj) # transform the projection into a new one (raster dataset)
+```
+
+
+
+### Environment-data stack
+```{r}
+# Ecological variables
+## Stack all files together
+## This is a way to check that everything has been done carefully and raster layers are compatible
+
+ecov = stack (hydroperiod.wgs, 
+              r_median.wgs,
+              msavi.july.wgs)
+
+ecov.crop = crop(ecov, study.area)
+```
+
+
+
+
+
+
 

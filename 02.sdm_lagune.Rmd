@@ -46,13 +46,12 @@ First of all, you need to run the rMarkdown document named "01.import_format_dat
 #. Extract values from the rasterstack
 e1 = raster::extract(ecov, tab.pa)# extract values from a raster (our environmental layers) at the location of specie
 df = cbind(tab.pa@data, e1) # attach the presence-absence data to the data
-
-
 ```
 
-
 ## 2. variable selection
+```{r}
 
+```
 
 ## 3. model
 ```{r}
