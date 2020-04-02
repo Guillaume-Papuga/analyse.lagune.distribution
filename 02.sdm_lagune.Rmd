@@ -44,8 +44,8 @@ First of all, you need to run the rMarkdown document named "01.import_format_dat
 ```{r data mining}
 # A first glimpse into data structure
 #. Extract values from the rasterstack
-e1 = raster::extract(ecov, tab.pa)# extract values from a raster (our environmental layers) at the location of specie
-df = cbind(tab.pa@data, e1) # attach the presence-absence data to the data
+env = raster::extract(ecov.crop, tab.pa)# extract values from a raster (our environmental layers) at the location of specie
+df = cbind(tab.pa@data, env) # attach the presence-absence data to the data
 ```
 
 ## 2. variable selection
@@ -59,16 +59,24 @@ df = cbind(tab.pa@data, e1) # attach the presence-absence data to the data
 
 # 2. Run the model
 m1 <- glm(lag ~ hydroperiod_sep2018_sep2019 +
-                I(hydroperiod_sep2018_sep2019^2) + 
-                MSAVI2_20m_T31TEJ_20190513, 
+                I(hydroperiod_sep2018_sep2019^2) +
+                layer + 
+                I(layer^2) +
+                MSAVI2_20m_T31TEJ_20190722 + 
+                I(MSAVI2_20m_T31TEJ_20190722^2), 
           data = df, family = "binomial")
 summary(m1)
+
+pred.glm.c = predict (ecov.crop, m1, type = "response")
+plot(pred.glm.c)
 
 pred.glm = predict (ecov, m1, type = "response")
 plot(pred.glm)
 
-writeRaster(x = pred.glm, 
-            filename = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/raw.res/test.pred.glm3.tif")
+writeRaster(x = pred.glm.c, 
+            filename = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/raw.res/test.pred.glm.crop.tif")
+
+
 # add points
 df.sp1 = as.data.frame(sp1)
 points (df.sp1[which (df.sp1$Occurrence == 1), c(2,3)], 

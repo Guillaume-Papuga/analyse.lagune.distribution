@@ -26,6 +26,9 @@ library(dismo)
 - le MSAVI. Dans l'idéal, il faudrait qu'on fasse un petit bilan des indices de productivité végétale (MSAVI, MSAVI2, NDVI, autre...?) pour pouvoir choisir le plus approprié (voir les comparer?)
 - raster d'altitude MNT : joindre les couches + mise au bon format
 - raster de distance aux masses d'eau salée permanente (mer + lagunes d'une taille > 1 ha, à définir) : faire une couche vecteur, calculer distance aux entités, remettre à la bonne ehcelle 
+- distance to shore and major salt-water body (calculated from a vector file)
+
+Script3
 - faire un masque d'eau permanente (ajouter pixels de bordure)
 
 - presence : faire une couche vecteur + extraire les données contenues dedans
@@ -55,11 +58,26 @@ The aim of this section is to build a database of occurence to train the model. 
 ```{r}
 ## hydroperiod
 ## 1. Upload from external drive
-source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/" # folder path
-var.name = "hydroperiod_sep2018_sep2019.tif" # name of the variable in the initial folder
-var.path.name = as.vector(paste (source, var.name, sep="")) # paste the right name
-hydroperiod = raster(var.path.name)
+source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/Sentinel/" # folder path
+tile = list.files(source) # names of each tile
+
+# use a loop to extract each variable
+for (i in tile){
+  var.name = paste ("/hydroperiod/hydroperiod_", i, "_sep2018_sep2019.tif", sep = "") # name of the variable in the initial folder
+  var.path.name = as.vector(paste (source, i, var.name, sep="")) # paste the right name
+  hydroperiod = raster(var.path.name) # upload the raster 
+  assign(paste("hydro_", i, sep = ""), hydroperiod) # assign the raster a unique name (from its tile)
+}
+
+# join the raster
+hydroperiod = mosaic(hydro_T31TDH, hydro_T31TEH, hydro_T31TEJ, hydro_T31TFH, hydro_T31TFJ, hydro_T31TGH, 
+                     fun = mean, tolerance=0.05)
+## 2. Plot
+plot(hydroperiod)
 ```
+
+"/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/Sentinel/T31TEJ/hydroperiod_T31TEJ_sep2018_sep2019.tif"
+
 
 ## b. Define the basic setting of raster layers
 ```{r}
@@ -69,20 +87,19 @@ hydroperiod = raster(var.path.name)
 
 # Same projection
 p.proj = "+proj=longlat +datum=WGS84"
+
+# Correct the projection of the hydroperiod layer
 projection(hydroperiod) # read the projection definition (raster dataset)
-
-# Same extent
-p.extent = extent(hydroperiod)
-
-# Same resolution 
-p.res = res(hydroperiod)
-```
-
-## c. Correct the projection of the hydroperiod layer
-```{r}
 hydroperiod.wgs = projectRaster(hydroperiod,
                                   crs = p.proj) # change the CRS of the raster to WGS84
+
+# Same extent
+p.extent = extent(hydroperiod.wgs)
+
+# Same resolution 
+p.res = res(hydroperiod.wgs)
 ```
+
 
 
 # 1. Load Mediterranean Temporary Lagoon (MTL) data
@@ -119,6 +136,13 @@ psce.wgs = st_transform(psce, p.proj)
 
 This dataset contains `r nb.row` populations.
 
+## b. Polygon data (presence)
+
+```{r polygon data}
+
+```
+
+
 ## b. Study Area (Polygon)
 ```{r}
 # circles with a radius of 50 km
@@ -131,19 +155,6 @@ study.area = polygons(x)
 
 
 ## c. Random absence data
-#```{r}
-# load raw data
-## 1. Upload from external drive
-source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/" # folder path
-var.name = "absence.shp" # name of the variable in the initial folder
-var.path.name = as.vector(paste (source, var.name, sep="")) # paste the right name
-abs = st_read(var.path.name)
-
-## 2. Check and convert (if needed) the vector layer
-# Same projection
-projection(abs) # read the projection definition (raster dataset)
-abs.wgs = abs
-#```
 
 ```{r}
 # create background data
@@ -189,8 +200,6 @@ spplot(tab.pa) # plot the spatial data with attributes
 ```
 
 
-## d. Polygon data coming soon
-
 
 
 
@@ -199,82 +208,142 @@ spplot(tab.pa) # plot the spatial data with attributes
 The aim is to format X dataset : 
 - hydroperiod (hydrological temporality based on Tour du Valat index - Sentinel 2 images)
 - msavi.spring (**median** value of M-Savi2 during the vegetative period from february to june)
-- msavi.july (M-Savi2 index of the july image)
-- mnt (altitude based on the the original MNT)
-- distance to shore and major salt-water body (calculated from a vector file)
+- altitude (based on IGN product at 75m resolution, resampled to match the grid of the hydroperiod layer)
 
 We use the **hydroperiod** layer as a basis to define the cell size.
 
-## d. Upload all other data
-### msavi.spring
+## d. Upload ecological variables
+### msavi
+The msavi layer is built as the median value of all images from 2019-02-01 to 2019-07-01.
 ```{r}
 ## msavi.spring
 ## 1. Upload from external drive
-source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/MSAVI2/" # folder path
-lst = list.files(path = source, pattern='tif$') [6:13] # list all the file and keep the spring ones
-st = stack (as.list(paste (source, lst, sep=""))) # create the raster stack
-r_median = calc(st, median) # take the median of the serie
+source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/Sentinel/" # folder path
+tile = list.files(source) # names of each tile
+
+# use a loop to extract each variable
+for (i in tile){
+  folder.path = as.vector(paste (source, i, "/MSAVI2_v0/", sep="")) # define the folder
+  lst = list.files(path = folder.path, pattern='tif$') # extract the list of files
+  df = data.frame(lst)  %>% # create a data frame from the list of rasterlayer
+    rename (cplt = lst) %>% # rename the column to avoid ambiguous name
+    separate(cplt, c("a","b","c","d"), sep = "_", remove = F) %>% # separate the first column (remove = F keep the first column)
+    filter(b == "20m") %>% # delete all the rows that do not contain single image
+    separate(d, c("date","ext"), sep = "[.]", remove = T) %>% # separate the last column to extract the date
+    mutate (date = as.Date(date, format = "%Y%m%d")) %>% # turn the code into a real date with base.r
+    filter (date > "2019-02-01", # and filter for images between the two boundary date
+            date < "2019-07-01")
+  img.spring = as.vector (df$cplt) # extract the name of the rasterlayer that correspond to spring Sentinel images
+  st = stack (as.list(paste (folder.path, img.spring, sep=""))) # convert into path & create the raster stack
+  r_median = calc(st, median) # take the median of the serie
+  assign(paste("msavi_", i, sep = ""), r_median) # assign the raster a unique name (from its tile)
+  }
+
+# join the rasters
+msavi = mosaic(msavi_T31TDH, msavi_T31TEH, msavi_T31TEJ, msavi_T31TFH, msavi_T31TFJ, msavi_T31TGH, 
+                     fun = mean, tolerance=0.05)
 
 ## 2. Check and convert (if needed) the raster layer
 # Same projection
-projection(r_median) # read the projection definition (raster dataset)
-r_median.wgs = projectRaster(r_median, 
-                             crs = p.proj) # reproject
+crs(msavi) # read the projection definition (raster dataset)
+msavi.wgs = projectRaster(msavi,
+                          crs = p.proj) 
 
-# Same extent
-extent(r_median.wgs)
+# Check
+extent(msavi.wgs) # Extent
+p.extent
+res(msavi.wgs) # Same resolution 
+p.res
 
-# Same resolution 
-res(r_median.wgs)
-
-##if the cell size is not the same, you need to convert it
-# a. change the pixel size with aggregate or disaggregate
-
-# b. resample the value with resample () (package raster)
-
-# test = projectRaster(bioclim.var, crs = p.proj) # transform the projection into a new one (raster dataset)
+## 3. Plot
+plot(msavi.wgs)
 ```
 
-### msavi.july
+
+### Altitude
+The altitude layer is uploaded as a resolution of 75m, and resampled and 20m to match the hydroperiod's grid.
 ```{r}
-## msavi.july
+## altitude
 ## 1. Upload from external drive
-source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/MSAVI2/" # folder path
-var.name = "MSAVI2_20m_T31TEJ_20190722.tif" # name of the variable in the initial folder
-var.path.name = as.vector(paste (source, var.name, sep="")) # paste the right name
-msavi.july = raster(var.path.name)
+source = "/Volumes/My Passport for Mac/spatial.data/02.geographie/bd.alti/BDALTIV2/1_DONNEES_LIVRAISON_2018-01-00245/BDALTIV2_MNT_75M_ASC_LAMB93_IGN69_FRANCE/" # folder path
+code.tile = c("0675_6150", "0675_6225", "0675_6300", "0675_6375", "0750_6300", "0750_6375", "0825_6300", "0825_6375", "0900_6225", "0900_6300", "0900_6375", "0975_6225", "0975_6300", "0975_6375", "1050_6375") 
+tile = paste("BDALTIV2_75M_FXX_", code.tile, "_MNT_LAMB93_IGN69.asc", sep = "") # names of each tile
+
+# use a loop to extract each variable
+for (i in tile){
+  var.path.name = paste (source, i, sep = "") # paste the right name
+  mnt = raster(var.path.name) # upload the raster 
+  crs(mnt) = CRS('+init=EPSG:2154')# assign its CRS, here Lambert 93
+  assign(paste("altitude_", i, sep = ""), mnt) # assign the raster a unique name (from its tile)
+}
+
+# join the raster
+altitude = mosaic(get(objects(pattern="asc$")[1]), 
+                  get(objects(pattern="asc$")[2]),
+                  get(objects(pattern="asc$")[3]),
+                  get(objects(pattern="asc$")[4]),
+                  get(objects(pattern="asc$")[5]),
+                  get(objects(pattern="asc$")[6]),
+                  get(objects(pattern="asc$")[7]),
+                  get(objects(pattern="asc$")[8]),
+                  get(objects(pattern="asc$")[9]),
+                  get(objects(pattern="asc$")[10]),
+                  get(objects(pattern="asc$")[11]),
+                  get(objects(pattern="asc$")[12]),
+                  get(objects(pattern="asc$")[13]),
+                  get(objects(pattern="asc$")[14]),
+                  get(objects(pattern="asc$")[15]),
+                  fun = mean, tolerance=0.05)
+plot(altitude)
 
 ## 2. Check and convert (if needed) the raster layer
 # Same projection
-projection(msavi.july) # read the projection definition (raster dataset)
-msavi.july.wgs = projectRaster(msavi.july,
+crs(altitude) # read the projection definition (raster dataset)
+altitude.wgs = projectRaster(altitude,
                                crs = p.proj) 
 
-# Same extent
-extent(msavi.july.wgs)
+# Check
+extent(altitude.wgs) # Extent
+p.extent
+res(altitude.wgs) # Same resolution 
+p.res
 
-# Same resolution 
-res(msavi.july.wgs)
+## 3. Convert the raster layer
+# Extent
+altitude.wgs.c = crop(x = altitude.wgs, y = p.extent) 
+altitude.wgs.c = extend(x = altitude.wgs.c, y = p.extent)
 
-##if the cell size is not the same, you need to convert it
-# a. change the pixel size with aggregate or disaggregate
+# Cell size
+# resample the value with resample () (package raster)
+altitude.wgs.c.adj = resample(altitude.wgs.c, hydroperiod.wgs, method = "bilinear")
 
-# b. resample the value with resample () (package raster)
-
-# test = projectRaster(bioclim.var, crs = p.proj) # transform the projection into a new one (raster dataset)
+## 4. Plot
+plot(altitude.wgs.c.adj)
 ```
-
 
 
 ### Environment-data stack
 ```{r}
 # Ecological variables
+## Save each layer to the processed file so one don't have to run the script again
+writeRaster(hydroperiod.wgs, 
+            paste ("/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/processed_layers/",
+                   "hydroperiod.wgs",".tif", sep = ""))
+
+writeRaster(msavi.wgs, 
+            paste ("/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/processed_layers/",
+                   "msavi.wgs",".tif", sep = ""))
+
+writeRaster(altitude.wgs.c.adj, 
+            paste ("/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/processed_layers/",
+                   "altitude.wgs.c.adj",".tif", sep = ""))
+
 ## Stack all files together
 ## This is a way to check that everything has been done carefully and raster layers are compatible
-
 ecov = stack (hydroperiod.wgs, 
-              r_median.wgs,
-              msavi.july.wgs)
+              msavi.wgs,
+              altitude.wgs.c.adj)
+
 
 ecov.crop = crop(ecov, study.area)
 ```
