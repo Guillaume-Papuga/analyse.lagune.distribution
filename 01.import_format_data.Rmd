@@ -14,10 +14,11 @@ require(here)
 library(tidyverse)
 library(stringr)
 library(raster)
-library(rgdal)
 library(sf) #shapefile
 library(dismo)
+library(rgdal)
 ```
+
 
 
 # Pense bête - a faire
@@ -58,8 +59,10 @@ The aim of this section is to build a database of occurence to train the model. 
 ```{r}
 ## hydroperiod
 ## 1. Upload from external drive
-source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/Sentinel/" # folder path
+source = "/media/papuga/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/Sentinel/" # folder path
 tile = list.files(source) # names of each tile
+
+/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers
 
 # use a loop to extract each variable
 for (i in tile){
