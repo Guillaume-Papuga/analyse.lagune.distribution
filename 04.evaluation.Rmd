@@ -1,0 +1,38 @@
+---
+title: "04.evaluation"
+author: "Guillaume Papuga"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This evauation follows three procedure
+
+* species approach : database validation (Silene)
+* chemical variables approach : field work
+* ?
+
+# Database validation
+We use the ex-Silene database (Conservatoire Botanique National Méditerranéen)
+
+Three step procedure
+* download all occurrences !! in the study area NO : in a buffer <5km from the coast !!
+* clean the database to retain observation
+  + select approved data
+  + with high precision (<10m - GPS precision)
+  + realized after 2005
+
+Once the database is cleaned
+1. Analyze the list of species found in the mapped area (excluding the polygons we used to calibrate the model)
+2. Analyze the overall distribution of characteristic species
+
+## 1. Database approach
+
+Objectif : graph histogram horizontal avec le nombre d'occurence par espèce de la liste des espèces trouvées exclusivement la
+
+Objectif : [en regard à droite] proportion des espèces dans des zones de présence
+
+

@@ -4,3 +4,27 @@ author: "Guillaume Papuga"
 date: "`r Sys.Date()`"
 output: html_document
 ---
+
+
+
+# Build a mask for permanent water and associated mixels
+```{r build a mask}
+# Select all cells that represent permanent water
+## threshold = 360 days
+hydro.360 = reclassify (hydroperiod.93, # the raster to be reclassified
+                        matrix(c(0, 360, NA), ncol=3, byrow=TRUE))
+
+# Delete all permanent water lying inside our presence lagoon
+## There must be few but still we can have some artifacts
+
+
+# Draw a buffer of 40m (= 2 pixels) at the limit of permanent water
+## S4 method for signature 'RasterLayer'
+hydro.buf = buffer(hydro.360, 
+                   width=30, # numeric, include just more than one pixel
+                   doEdge = TRUE) # logical, the boundaries function is called first
+
+```
+
+
+

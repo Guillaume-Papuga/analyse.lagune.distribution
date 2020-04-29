@@ -10,29 +10,23 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r packages}
-require(here)
+library(here)
 library(tidyverse)
 library(stringr)
-library(raster)
 library(sf) #shapefile
 library(dismo)
 library(rgdal)
+library(raster)
+library(nngeo)
 ```
-
-
 
 # Pense bête - a faire
 ## variables
-- la temporalité de l'eau, sur 1 an et 3 ans (moyenne) 
-- le MSAVI. Dans l'idéal, il faudrait qu'on fasse un petit bilan des indices de productivité végétale (MSAVI, MSAVI2, NDVI, autre...?) pour pouvoir choisir le plus approprié (voir les comparer?)
+- la temporalité de l'eau, sur 1 an et 3 ans (moyenne) > argument veget eau
+- le MSAVI. Dans l'idéal, il faudrait qu'on fasse un petit bilan des indices de productivité végétale (MSAVI, MSAVI2, NDVI, autre...?) pour pouvoir choisir le plus approprié (voir les comparer?) > non argument veget eau
 - raster d'altitude MNT : joindre les couches + mise au bon format
-- raster de distance aux masses d'eau salée permanente (mer + lagunes d'une taille > 1 ha, à définir) : faire une couche vecteur, calculer distance aux entités, remettre à la bonne ehcelle 
-- distance to shore and major salt-water body (calculated from a vector file)
-
-Script3
-- faire un masque d'eau permanente (ajouter pixels de bordure)
-
-- presence : faire une couche vecteur + extraire les données contenues dedans
+- raster de distance aux masses d'eau salée permanente (mer + lagunes d'une taille > 1 ha, à définir) : faire une couche vecteur, calculer distance aux entités, remettre à la bonne ehcelle > pour l'instant non
+- distance to shore and major salt-water body (calculated from a vector file) > pour l'instant non
 
 ## code
 - faire les graphiques de réponse par variable (ordonnée 1-0)
@@ -40,29 +34,27 @@ Script3
 - lisser le code
 
 # Introduction
-## Article
+* Article
 Data processed in this file belongs to a project that aims at mapping the distribution of Mediterranean temporary lagoons. 
 
-## Format
+* Format
 This document is used to format data. No analysis is coded here.
 All data names once processed follow the form d.something (d stands for "data", and the second part must clearly refer to the type of data).
 
-## Environmental variables (section 1.)
+* Environmental variables (section 1.)
 The aim of this section is to format all the environment variables. They are spatial layers (rasters) that require some pre-processing to perform spatial analysis
 
-## Occurences (section 2.)
+* Occurences (section 2.)
 The aim of this section is to build a database of occurence to train the model. We used different strategies to sample pixels based on known occurences of mediterranean temporary lagoon 
 
-# Pre-processing
+* Pre-processing
 
 ## a. Download the base layer
 ```{r}
 ## hydroperiod
-## 1. Upload from external drive
+## 1. Upload from computer
 source = "/media/papuga/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/Sentinel/" # folder path
 tile = list.files(source) # names of each tile
-
-/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers
 
 # use a loop to extract each variable
 for (i in tile){
@@ -79,132 +71,56 @@ hydroperiod = mosaic(hydro_T31TDH, hydro_T31TEH, hydro_T31TEJ, hydro_T31TFH, hyd
 plot(hydroperiod)
 ```
 
-"/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/Sentinel/T31TEJ/hydroperiod_T31TEJ_sep2018_sep2019.tif"
-
 
 ## b. Define the basic setting of raster layers
-```{r}
-## Set the basic parameters
+```{r layers setting}
+## Set the basic parameters of the project
 # each time you want to stack data, you have to respect the same PER : PROJECTION - EXTENT - RESOLUTION
-# it's called the standard settings of the project and it's p.
+# it's called the standard settings of the project.
 
 # Same projection
-p.proj = "+proj=longlat +datum=WGS84"
+p.proj = (CRS("+init=epsg:2154"))
 
 # Correct the projection of the hydroperiod layer
+p.proj
 projection(hydroperiod) # read the projection definition (raster dataset)
-hydroperiod.wgs = projectRaster(hydroperiod,
-                                  crs = p.proj) # change the CRS of the raster to WGS84
+hydroperiod.93 = projectRaster(hydroperiod, 
+                               crs = p.proj) # change the CRS of the raster to WGS84
 
 # Same extent
-p.extent = extent(hydroperiod.wgs)
+p.extent = extent(hydroperiod.93)
 
 # Same resolution 
-p.res = res(hydroperiod.wgs)
+p.res = res(hydroperiod.93)
 ```
-
 
 
 # 1. Load Mediterranean Temporary Lagoon (MTL) data
-## a. Dataset structure
-```{r}
-# The matrix is named `d.lag` and must contain 6 columns
-# pix.id : indefinite pixel code (dataset specific)
-# had.id : identifica
-# date : the date (yyyymmdd)
-# x : coordinate on the x-axis (longitude in decimal degree)
-# y : coordinate on the y-axis (latitude in decimal degree)
-# precision : precision of the location (expressed in meter)
-# source : explicit name of the source of the imported dataset
-
-d.lag = as.data.frame(matrix (ncol = 7,nrow = 0))
-colnames (d.occ) = c("code.pop", "sp.name", "date", "x", "y", "precision", "source")
+## a. Preset
+```{r plot extent}
+# due to the spatial extent of the project, it is difficult to map results
+# define a local extent to visualize a subset of results (Frontignan, Hérault, France)
+ext.fronti = extent (756670, 768435, 6257688, 6267642)
 ```
 
 
-## b. Hand pointed data (presence)
-```{r}
-# load raw data
-## 1. Upload from external drive
-source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/" # folder path
-var.name = "lag.temp.shp" # name of the variable in the initial folder
-var.path.name = as.vector(paste (source, var.name, sep="")) # paste the right name
-psce = st_read(var.path.name)
-
-## 2. Check and convert (if needed) the raster layer
-# Same projection
-projection(psce) # read the projection definition (raster dataset)
-psce.wgs = st_transform(psce, p.proj)
-```
-
-This dataset contains `r nb.row` populations.
-
-## b. Polygon data (presence)
-
+## b. Polygon data (presence - study area - absence)
 ```{r polygon data}
+## Presence
+# Read the polygon data (with the sf package)
+# This multi-polygons has been drawn by hand in Qgis following Openstreet map image 
+lag = st_read(here::here("data", "raw", "lag_digit.shp"))
+lag.93 = st_transform(lag, crs = p.proj) # modify the projection of the vector layer
 
+## Study area : draw a buffer around polygons
+study.area = buffer (as(lag.93, Class = "Spatial"), # need a sp object to use the function 'buffer'
+                     width = 2000, # width in meters
+                     dissolve = T) # group all the polygons together
+study.area.st = st_as_sf(study.area) # back to an sf object
+
+## Absence : delete holes 
+abs.area = st_difference(study.area.st, st_union(lag.93)) # DNF to dissolve multiple polygons first
 ```
-
-
-## b. Study Area (Polygon)
-```{r}
-# circles with a radius of 50 km
-tab.psce.wgs = as.data.frame (cbind (st_coordinates(psce.wgs), 
-                                    rep(1, nrow(psce.wgs))))
-x = circles(tab.psce.wgs[,1:2], d=5000, lonlat=TRUE) 
-## Loading required namespace: rgeos 
-study.area = polygons(x)
-```
-
-
-## c. Random absence data
-
-```{r}
-# create background data
-bg = spsample(study.area, 5000, type='random', iter=25)
-```
-
-
-
-## c. Synthese
-```{r}
-# convert each spatial layer into a dataframe
-tab.psce.wgs = as.data.frame (cbind (st_coordinates(psce.wgs), 
-                                    rep(1, nrow(psce.wgs))))
-
-tab.abs.wgs = cbind (as.data.frame (bg), # coordinates of each point in the vector
-                    rep(0, nrow(as.data.frame (bg)))) # 1-0 lagoon value
-
-# delete duplicate btw datasets
-cells.p = cellFromXY(hydroperiod.wgs, st_coordinates(psce.wgs)) # cell n°
-cells.p = unique (cells.p)
-
-cells.a = cellFromXY(hydroperiod.wgs, as.data.frame (bg)) # cell n°
-cells.a = unique (cells.a)
-
-cells = setdiff(cells.a, cells.p) # identify cells specific from a
-
-tab.abs.wgs = tab.abs.wgs %>%
-  mutate (cell.n = cellFromXY(hydroperiod.wgs, as.data.frame (bg))) %>% # add the column
-  distinct(cell.n, .keep_all = TRUE) %>% # eliminate duplicate
-  filter(cell.n %in% cells) # select in the cells list
-tab.abs.wgs = tab.abs.wgs[,-4] # delete the cell column
-
-# rbind the two datasets
-colnames (tab.abs.wgs) = c("x", "y", "lag") # change columns name
-colnames (tab.psce.wgs) = c("x", "y", "lag") # change columns name
-tab.pa = rbind (tab.abs.wgs, tab.psce.wgs) # bind the two tables
-tab.pa = (tab.pa[complete.cases(tab.pa), ]) # remove NA
-
-# transform the matrix into a spatial point file
-coordinates (tab.pa) = ~x*y # the name of the x and y columns
-proj4string (tab.pa) = p.proj # attributes a projection for the object, it DOES NOT reproject
-spplot(tab.pa) # plot the spatial data with attributes
-```
-
-
-
-
 
 
 # 2. Environmental data
@@ -213,16 +129,16 @@ The aim is to format X dataset :
 - msavi.spring (**median** value of M-Savi2 during the vegetative period from february to june)
 - altitude (based on IGN product at 75m resolution, resampled to match the grid of the hydroperiod layer)
 
-We use the **hydroperiod** layer as a basis to define the cell size.
+Note : we use the **hydroperiod** layer as a basis to define the cell size.
 
-## d. Upload ecological variables
-### msavi
+### a. msavi
 The msavi layer is built as the median value of all images from 2019-02-01 to 2019-07-01.
 ```{r}
 ## msavi.spring
 ## 1. Upload from external drive
-source = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/Sentinel/" # folder path
+source = "/media/papuga/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/Sentinel/" # folder path
 tile = list.files(source) # names of each tile
+# source = "/home/papuga/Documents/couches_lag.temp/raw.layers/Sentinel/"  # if done from my computer
 
 # use a loop to extract each variable
 for (i in tile){
@@ -249,26 +165,26 @@ msavi = mosaic(msavi_T31TDH, msavi_T31TEH, msavi_T31TEJ, msavi_T31TFH, msavi_T31
 ## 2. Check and convert (if needed) the raster layer
 # Same projection
 crs(msavi) # read the projection definition (raster dataset)
-msavi.wgs = projectRaster(msavi,
-                          crs = p.proj) 
+msavi.93 = projectRaster(msavi,
+                         crs = p.proj) 
 
 # Check
-extent(msavi.wgs) # Extent
+extent(msavi.93) # Extent
 p.extent
-res(msavi.wgs) # Same resolution 
+res(msavi.93) # Same resolution 
 p.res
 
 ## 3. Plot
-plot(msavi.wgs)
+plot(msavi.93)
 ```
 
 
-### Altitude
-The altitude layer is uploaded as a resolution of 75m, and resampled and 20m to match the hydroperiod's grid.
+### b. Altitude
+The altitude layer is uploaded at a resolution of 75m, and resampled at 20m to match the hydroperiod's grid.
 ```{r}
 ## altitude
 ## 1. Upload from external drive
-source = "/Volumes/My Passport for Mac/spatial.data/02.geographie/bd.alti/BDALTIV2/1_DONNEES_LIVRAISON_2018-01-00245/BDALTIV2_MNT_75M_ASC_LAMB93_IGN69_FRANCE/" # folder path
+source = "/media/papuga//My Passport for Mac/spatial.data/02.geographie/bd.alti/BDALTIV2/1_DONNEES_LIVRAISON_2018-01-00245/BDALTIV2_MNT_75M_ASC_LAMB93_IGN69_FRANCE/" # folder path
 code.tile = c("0675_6150", "0675_6225", "0675_6300", "0675_6375", "0750_6300", "0750_6375", "0825_6300", "0825_6375", "0900_6225", "0900_6300", "0900_6375", "0975_6225", "0975_6300", "0975_6375", "1050_6375") 
 tile = paste("BDALTIV2_75M_FXX_", code.tile, "_MNT_LAMB93_IGN69.asc", sep = "") # names of each tile
 
@@ -302,58 +218,58 @@ plot(altitude)
 ## 2. Check and convert (if needed) the raster layer
 # Same projection
 crs(altitude) # read the projection definition (raster dataset)
-altitude.wgs = projectRaster(altitude,
-                               crs = p.proj) 
+altitude.93 = projectRaster(altitude, 
+                            crs = p.proj) 
 
 # Check
-extent(altitude.wgs) # Extent
+extent(altitude.93) # Extent
 p.extent
-res(altitude.wgs) # Same resolution 
+res(altitude.93) # Same resolution 
 p.res
 
 ## 3. Convert the raster layer
 # Extent
-altitude.wgs.c = crop(x = altitude.wgs, y = p.extent) 
-altitude.wgs.c = extend(x = altitude.wgs.c, y = p.extent)
+altitude.93.c = crop(x = altitude.93, y = p.extent) 
+altitude.93.c = extend(x = altitude.93.c, y = p.extent)
 
 # Cell size
 # resample the value with resample () (package raster)
-altitude.wgs.c.adj = resample(altitude.wgs.c, hydroperiod.wgs, method = "bilinear")
+altitude.93.c.adj = resample(altitude.93.c, hydroperiod.93, method = "bilinear")
 
 ## 4. Plot
-plot(altitude.wgs.c.adj)
+plot(altitude.93.c.adj)
 ```
 
 
-### Environment-data stack
+### c. Environment-data stack
 ```{r}
 # Ecological variables
 ## Save each layer to the processed file so one don't have to run the script again
-writeRaster(hydroperiod.wgs, 
-            paste ("/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/processed_layers/",
-                   "hydroperiod.wgs",".tif", sep = ""))
+## Folder path has to be changed
+writeRaster(hydroperiod.93, 
+            paste ("/home/papuga/Documents/couches_lag.temp/processed_layers/",
+                   "hydroperiod.93",".tif", sep = ""))
 
-writeRaster(msavi.wgs, 
-            paste ("/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/processed_layers/",
-                   "msavi.wgs",".tif", sep = ""))
+writeRaster(msavi.93, 
+            paste ("/home/papuga/Documents/couches_lag.temp/processed_layers/",
+                   "msavi.93",".tif", sep = ""))
 
-writeRaster(altitude.wgs.c.adj, 
-            paste ("/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/processed_layers/",
-                   "altitude.wgs.c.adj",".tif", sep = ""))
-
-## Stack all files together
-## This is a way to check that everything has been done carefully and raster layers are compatible
-ecov = stack (hydroperiod.wgs, 
-              msavi.wgs,
-              altitude.wgs.c.adj)
-
-
-ecov.crop = crop(ecov, study.area)
+writeRaster(altitude.93.c.adj, 
+            paste ("/home/papuga/Documents/couches_lag.temp/processed_layers/",
+                   "altitude.93.c.adj",".tif", sep = ""))
 ```
 
 
+```{r open layers}
+# Read layers (to avoid running the whole script when session restarts)
+msavi.93 = raster("/home/papuga/Documents/couches_lag.temp/processed_layers/msavi.wgs.tif")
+msavi.93 = raster("/home/papuga/Documents/couches_lag.temp/processed_layers/msavi.wgs.tif")
+altitude.93.c.adj = raster("/home/papuga/Documents/couches_lag.temp/processed_layers/altitude.wgs.c.adj.tif")
 
-
-
-
+## Stack all files together
+## This is a way to check that everything has been done carefully and raster layers are compatible
+ecov = stack (hydroperiod.93, 
+              msavi.93,
+              altitude.93.c.adj)
+```
 

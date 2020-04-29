@@ -5,7 +5,6 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
-
 ```{r setup, include=FALSE, message=FALSE, warning=FALSE}
 knitr::opts_chunk$set(echo = TRUE, include=FALSE, message=FALSE, warning=FALSE)
 ```
@@ -32,51 +31,118 @@ library (usdm)
 First of all, you need to run the rMarkdown document named "01.import_format_data.Rmd" to load all the data in the R session
 - 1. ecological variables are grouped into a stacked raster named `ecov`
 - 2. p-a data from GIS handmade points are grouped in a spatial point file named `tab.pa`
-- 3. p-a date with complete habitat structure (to distinguish one habitat from another) are to be created
+- 3. p-a data with complete habitat structure (to distinguish one habitat from another) are to be created
 
 
-```{r load data}
-```
-
-
-# PART I : simple GLM procedure (handmade)
-
-## 1. data mining
-```{r data mining}
-# A first glimpse into data structure
-#. Extract values from the rasterstack
-env = raster::extract(ecov.crop, tab.pa)# extract values from a raster (our environmental layers) at the location of specie
-df = cbind(tab.pa@data, env) # attach the presence-absence data to the data
-```
-
-## 2. variable selection
 ```{r}
+# presence
+psc = extract(ecov, lag.93, weights = TRUE, normalizeWeights = FALSE, factors = TRUE) %>%
+  melt () %>%
+  dcast (Var1 + L1 ~Var2, value.var = "value") %>%
+  filter (weight == 1) %>% # exclude cells not totally contained in the polygon (avoid mixels)
+  dplyr::select (-c(weight, Var1)) %>% # delete the column
+  rename(lag = L1) %>%
+  mutate (presence = 1) %>%
+  arrange (lag)
 
+# background
+bg = extract(ecov, abs.area, weights = TRUE, normalizeWeights = FALSE, factors = TRUE) %>%
+  melt () %>%
+  dcast (Var1 + L1 ~Var2, value.var = "value") %>%
+  filter (weight == 1) %>% # exclude cells not totally contained in the polygon (avoid mixels)
+  dplyr::select (-c(weight, Var1)) %>% # delete the column
+  rename(lag = L1) %>%
+  mutate(lag = NA) %>%
+  mutate (presence = 0)
+
+# join
+mat = bind_rows(psc, bg) # with bind row from dplyr (anyway, columns are identical here, rbind would work)
+
+# write the table
+write.csv (mat, here::here("data", "processed", "pa.mat.csv"))
 ```
 
-## 3. model
+
+# PART I : Data mining
+
+## Hydroperiod
+```{r data mining hydroperiod}
+# reduce absences
+data.plot = mat 
+
+# plot
+# histogram
+ggplot(data.plot[,"hydroperiod"], aes(x = hydroperiod)) + 
+  geom_histogram(aes(y=..density..), position="identity", alpha=0.5) +
+  geom_density(alpha=0.6) +
+  scale_color_manual(values=c("#999999", "#E69F00", "#56B4E9")) +
+  scale_fill_manual(values=c("#999999", "#E69F00", "#56B4E9")) +
+  labs(title="Hydroperiod histogram plot",x="Hydroperiod (days)", y = "Density") +
+  theme_classic()
+
+# binary plot with smoother
+ggplot(data.plot, aes(x = altitude.wgs.c.adj , y = presence)) +
+  geom_point() +
+  stat_smooth () +
+  labs(title="Hydroperiod plot", x = "Hydroperiod (days)", y = "Lagoon") +
+  theme_classic()
+```
+
+## Msavi
+
+
+## Altitude
+
+## Correlation amon variables
+
+
+
+# PART II : simple GLM procedure (handmade)
+
+
+
+## 1. variable selection
+```{r}
+# Only three variables in the model
+```
+
+## 2. model
 ```{r}
 # 1. Split the data set
+training = sample_n(df, 10)
+
+
+test = sample_n(df, 10)
+
+
 
 # 2. Run the model
-m1 <- glm(lag ~ hydroperiod_sep2018_sep2019 +
-                I(hydroperiod_sep2018_sep2019^2) +
-                layer + 
-                I(layer^2) +
-                MSAVI2_20m_T31TEJ_20190722 + 
-                I(MSAVI2_20m_T31TEJ_20190722^2), 
-          data = df, family = "binomial")
-summary(m1)
+# due to the shape of the response curve we added a square term to hydroperiod and msavi
+m1 = glm(presence ~ hydroperiod.93 +
+           I(hydroperiod.93^2) +
+           msavi.93 + 
+           I(msavi.93^2) +
+           altitude.93.c.adj, 
+         data = training, family = "binomial")
 
-pred.glm.c = predict (ecov.crop, m1, type = "response")
-plot(pred.glm.c)
+summary(m1) # model summary
 
+# 3. evaluate the model
+# to come (see Hijmann too for AUC)
+
+# 4. predict over the whole map
 pred.glm = predict (ecov, m1, type = "response")
-plot(pred.glm)
 
+# 5. save the map
 writeRaster(x = pred.glm.c, 
             filename = "/Volumes/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/raw.res/test.pred.glm.crop.tif")
+```
 
+```{r}
+# Plot the result of the GLM over the Frontignan area
+# 1. crop the variables
+pred.glm.fronti
+plot(pred.glm.fronti)
 
 # add points
 df.sp1 = as.data.frame(sp1)
@@ -84,19 +150,25 @@ points (df.sp1[which (df.sp1$Occurrence == 1), c(2,3)],
         pch = 16, col = "red", cex = 0.5)
 points (df.sp1[which (df.sp1$Occurrence == 0), c(2,3)], 
         pch = 16, col = "blue", cex = 0.3)
-
-# 3. evaluate the model
 ```
 
 
 
 
+# PART III : General additive model
+```{r}
+
+```
 
 
 
 
+# Part IV : **sdm** package procedure
+```{r}
 
-# PART II : **sdm** package procedure
+```
+
+
 
 
 
