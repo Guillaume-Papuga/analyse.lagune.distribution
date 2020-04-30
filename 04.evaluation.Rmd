@@ -33,6 +33,10 @@ Once the database is cleaned
 
 Objectif : graph histogram horizontal avec le nombre d'occurence par espèce de la liste des espèces trouvées exclusivement la
 
-Objectif : [en regard à droite] proportion des espèces dans des zones de présence
+Objectif : [en regard à droite] proportion des espèces dans des zones de présence en fonction de leur distribution globale
+
+## 2. Field work
+Objectif : carte? 
+Ou ..?
 
 

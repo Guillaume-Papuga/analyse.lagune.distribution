@@ -121,6 +121,15 @@ study.area.st = st_as_sf(study.area) # back to an sf object
 ## Absence : delete holes 
 abs.area = st_difference(study.area.st, st_union(lag.93)) # DNF to dissolve multiple polygons first
 ```
+## c. project boundaries
+```{r}
+## outer boundaries
+# first layers that limit the project boundaries to quartenary sediment area
+p.bound = st_read(here::here("data", "raw", "study.boundaries.shp"))
+
+## coastline
+
+```
 
 
 # 2. Environmental data
@@ -262,14 +271,17 @@ writeRaster(altitude.93.c.adj,
 
 ```{r open layers}
 # Read layers (to avoid running the whole script when session restarts)
-msavi.93 = raster("/home/papuga/Documents/couches_lag.temp/processed_layers/msavi.wgs.tif")
-msavi.93 = raster("/home/papuga/Documents/couches_lag.temp/processed_layers/msavi.wgs.tif")
-altitude.93.c.adj = raster("/home/papuga/Documents/couches_lag.temp/processed_layers/altitude.wgs.c.adj.tif")
+hydroperiod.93 = raster("/home/papuga/Documents/couches_lag.temp/processed_layers/hydroperiod.93.tif")
+msavi.93 = raster("/home/papuga/Documents/couches_lag.temp/processed_layers/msavi.93.tif")
+altitude.93.c.adj = raster("/home/papuga/Documents/couches_lag.temp/processed_layers/altitude.93.c.adj.tif")
 
 ## Stack all files together
 ## This is a way to check that everything has been done carefully and raster layers are compatible
 ecov = stack (hydroperiod.93, 
               msavi.93,
               altitude.93.c.adj)
+
+ecov.c = mask(ecov, p.bound) %>%
+  crop (p.bound)
 ```
 
