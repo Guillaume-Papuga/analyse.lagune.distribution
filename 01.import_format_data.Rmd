@@ -298,7 +298,10 @@ ecov.c = raster::crop (ecov.m, lim)
 end = Sys.time()
 t1 = end-st
 
-# training area
-
+# crop to training area
+st = Sys.time()
+ecov.p = raster::crop (ecov, ext.practice)
+end = Sys.time()
+t1 = end-st
 ```
 

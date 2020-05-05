@@ -26,6 +26,7 @@ library (sdm)
 library (sp)
 library (usdm) 
 library (reshape2)
+library (doParallel)
 ```
 
 
@@ -50,6 +51,7 @@ psc = extract(ecov, lag.93, weights = TRUE, normalizeWeights = FALSE, factors = 
 
 # background
 bg.pts = st_sample(abs.area, 100000) # reduce the sample of background points to 100 000 due to computation time
+
 bg = as.data.frame(extract(ecov, as(bg.pts, "Spatial"))) %>%
   mutate (lag = NA) %>%
   mutate (presence = 0) %>%
@@ -60,18 +62,45 @@ mat = bind_rows(psc, bg) %>% # with bind row from dplyr (anyway, columns are ide
              drop_na(c(hydroperiod.93, msavi.93, altitude.93.c.adj)) 
 
 # write the table
-# write.csv (mat, here::here("data", "processed", "pa.mat.csv"))
+write.csv (mat, here::here("data", "processed", "pa.mat.csv"))
+# mat = read.csv(here::here("data", "processed", "pa.mat.csv"), dec = ".") # backup
 ```
 
 
 # PART I : Data mining
 
+## Number of pixels per lagoon
+```{r}
+## Histogram of lagoon size
+# histogram
+data.size = as.data.frame(table(psc$lag))
+ggplot(data.size, aes(x = Freq)) + 
+  geom_histogram(aes(y=..density..), position="identity", alpha=0.5) +
+  geom_density(alpha=0.3, bw = 30, fill="#FF6666") +
+  labs(title="Lagoon size",x="Number of 20*20 pixels", y = "Density") +
+  theme_classic()
+
+# table
+data.size %>%
+  arrange(desc(Freq)) %>%
+  head()
+```
+
+Lagoons n°130 and n°97 weight way too much in the dataset due to their anormal huge size. Delete them.
+
+```{r}
+# filter for over-represented lagoons
+mat.f = mat %>%
+  filter (!lag %in% c(97, 130))
+```
+
+
 ## Hydroperiod
 ```{r data mining hydroperiod}
 # reduce absences
-data.plot = mat %>% 
+data.plot = mat.f %>% 
   group_by(presence) %>% 
-  sample_n(10000)
+  sample_n(5000)
 
 # plot
 # histogram
@@ -87,7 +116,7 @@ ggplot(psc, aes(x = hydroperiod.93)) +
 ggplot(psc, aes(x = reorder(as.factor(lag), hydroperiod.93, FUN = median), y = hydroperiod.93)) +
   geom_boxplot() +
   labs(title="Hydroperiod per lagoon", x="Lagoon id", y = "Hydroperiod")
-#x = reorder(lag, hydroperiod.93, FUN = median)
+
 # binary plot with smoother
 # detect trend in the presence-absence relationship 
 ggplot(data.plot, aes(x = hydroperiod.93 , y = presence)) +
@@ -96,13 +125,23 @@ ggplot(data.plot, aes(x = hydroperiod.93 , y = presence)) +
   labs(title="Hydroperiod binomial plot", x = "Hydroperiod (days)", y = "Lagoon") +
   theme_classic()
 ```
+There is an important part of lagoon that stay wet for >300 days. 
+
+```{r}
+# filter for hydroperiod
+mat.fh = mat.f %>%
+  group_by(lag) %>%
+  mutate (mean.hydro = mean (hydroperiod.93)) %>%
+  filter (mean.hydro < 300)
+```
+
 
 ## Msavi
 ```{r data mining hydroperiod}
 # reduce absences
-data.plot = mat %>% 
+data.plot = mat.fh %>% 
   group_by(presence) %>% 
-  sample_n(10000)
+  sample_n(4000)
 
 # plot
 # histogram
@@ -112,6 +151,12 @@ ggplot(psc, aes(x = msavi.93)) +
   labs(title="Msavi histogram plot",x="Msavi", y = "Density") +
   theme_classic()
 
+# boxplot
+# detect eventual lagoons that could be considered as outliers
+ggplot(psc, aes(x = reorder(as.factor(lag), msavi.93, FUN = median), y = msavi.93)) +
+  geom_boxplot() +
+  labs(title="Msavi per lagoon", x="Lagoon id", y = "Msavi")
+
 # binary plot with smoother
 ggplot(data.plot, aes(x = msavi.93 , y = presence)) +
   geom_point(size = 0.3) +
@@ -120,12 +165,21 @@ ggplot(data.plot, aes(x = msavi.93 , y = presence)) +
   theme_classic()
 ```
 
+```{r}
+# filter for msavi
+mat.fhs = mat.fh %>%
+  group_by(lag) %>%
+  mutate (mean.msavi = mean (msavi.93)) %>%
+  filter (mean.msavi > -2)
+```
+
+
 ## Altitude
 ```{r data mining hydroperiod}
 # reduce absences
-data.plot = mat %>% 
+data.plot = mat.fhs %>% 
   group_by(presence) %>% 
-  sample_n(10000)
+  sample_n(4000)
 
 # plot
 # histogram
@@ -138,13 +192,27 @@ ggplot(psc, aes(x = altitude.93.c.adj)) +
 # binary plot with smoother
 ggplot(data.plot, aes(x = altitude.93.c.adj , y = presence)) +
   geom_point(size = 0.3) +
-  stat_smooth (fill="grey", colour = "darkgrey") +
+  stat_smooth (fill="grey", colour = "darkgrey", method = "loess") +
   labs(title="Altitude binomial plot", x = "Altitude (m)", y = "Lagoon") +
   theme_classic()
 ```
 
+
 ## Correlation among variables
-To come
+```{r}
+# multivariate analysis 
+pca.lag = dudi.pca(mat.fhs[,c("hydroperiod.93", "msavi.93", "altitude.93.c.adj")], 
+                   scannf = FALSE, 
+                   nf = 2)
+scatter(pca.lag)
+s.class (pca.lag$li, 
+         as.factor(mat$lag))
+```
+
+```{r}
+# correlation amon variables
+
+```
 
 
 # PART II : simple GLM procedure (handmade)
@@ -155,73 +223,98 @@ To come
 
 ## 2. model
 ```{r}
-# 1. Split the data set
-rawdata = mat 
+# This model is run in a loop
+## First, prepare the set of object that will store infos 
+rawdata = mat.fhs # define the dataset
+perf.m1 = as.data.frame(matrix(data = NA, 
+                               nrow = 0,
+                               ncol = 10)) %>%
+  rename (aic = V1,
+          res.dev = V2,
+          res.df = V3, 
+          dev.df = V4, 
+          auc = V5, 
+          cor = V6, 
+          tr.kappa = V7,
+          tr.spec_sens = V8,
+          tr.prev = V9, 
+          tr.equal = V10)
+stack.m1 = stack() # empty stack to store rasters produced
 
-# for (i in 1:50){}
-# training dataset
-tr.lag = sample(unique(na.omit(rawdata$lag)), 
+## This analysis is paralelized using foreach
+## Start and stop the cluster
+
+for (i in 1:50){
+  # 1. Split the data set
+  ## training dataset
+  tr.lag = sample(unique(na.omit(rawdata$lag)), 
                 0.7*length(unique(na.omit(rawdata$lag))), 
                 replace = FALSE)
-tr.p = rawdata %>%
-          filter(lag == tr.lag)
+  tr.p = rawdata %>%
+          filter(lag %in% tr.lag)
+  ncell_tr.lag = nrow(tr.p)
+  tr.a = rawdata %>%
+    filter(presence == 0) %>%
+    sample_n(size = ncell_tr.lag)
+  
+  train = bind_rows(tr.p, tr.a) # jeu de données 
+  
+  ## test dataset
+  te.p = rawdata %>%
+    filter(!lag %in% tr.lag) %>%
+    filter(presence == 1)
+  ncell_te.lag = nrow(te.p)
+  te.a = rawdata %>%
+    filter(presence == 0) %>%
+    sample_n(size = ncell_te.lag)
+  
+  test = bind_rows(te.p, te.a)
+  
+  # 2. Run the model
+  # due to the shape of the response curve we added a square term to hydroperiod, msavi and altitude
+  m1 = glm(presence ~ hydroperiod.93 + 
+             I(hydroperiod.93^2) +
+             altitude.93.c.adj + 
+             I(altitude.93.c.adj^2) +
+             msavi.93 + 
+             I(msavi.93^2), 
+           data = train, family = "binomial")
+  
+  # 3. evaluate the model
+  ## model characteristics
+  sum.m = summary(m1) # model summary
+  perf.m1[i, "aic"] = sum.m$aic
+  perf.m1[i, "res.dev"] = sum.m$deviance
+  perf.m1[i, "res.df"] = sum.m$df.residual
+  perf.m1[i, "dev.df"] = round(sum.m$deviance/sum.m$df.residual, 3)# calculate the res.deviance / res.df
+ 
+  ## Evaluate the model
+  ev = evaluate(te.p, te.a, m1) # use dismo metric to evaluate the model 
+  tr = threshold(ev, 'kappa')
+  
+  perf.m1[i, "auc"] = ev@auc
+  perf.m1[i, "cor"] = round (as.numeric(ev@cor), 3)
+  perf.m1[i, "tr.kappa"] = round (threshold(ev, 'kappa'), 3)
+  perf.m1[i, "tr.spec_sens"] = round (threshold(ev, 'spec_sens'), 3)
+  perf.m1[i, "tr.prev"] = round (threshold(ev, 'prevalence'), 3)
+  perf.m1[i, "tr.equal"] = round (threshold(ev, 'equal_sens_spec'), 3)
 
-ncell_tr.lag = nrow(tr.p)
+  # 4. Spatial prediction over a restricted part of the map
+  pred.glm = predict (ecov.p, m1, type = "response")
+  stack.m1 = stack (stack.m1, pred.glm)
+  }
 
-tr.a = rawdata %>%
-  filter(presence == 0) %>%
-  sample_n(size = ncell_tr.lag)
+averaged.m1 = mean(stack.m1)
 
-train = bind_rows(tr.p, tr.a)
-
-# test dataset
-te.p = rawdata %>%
-          filter(lag != tr.lag)
-
-ncell_te.lag = nrow(te.p)
-
-te.a = rawdata %>%
-  filter(presence == 0) %>%
-  sample_n(size = ncell_te.lag)
-
-test = bind_rows(te.p, te.a)
-
-# 2. Run the model
-# due to the shape of the response curve we added a square term to hydroperiod and msavi
-m1 = glm(presence ~ hydroperiod.93 + 
-           I(hydroperiod.93) +
-           msavi.93 + 
-           I(msavi.93^2) +
-           altitude.93.c.adj + 
-           I(altitude.93.c.adj^2), 
-         data = train, family = "binomial")
-
-summary(m1) # model summary
-
-# 3. evaluate the model
-# to come (see Hijmann too for AUC)
-
-# 4. predict over the whole map
-pred.glm = predict (ecov, m1, type = "response")
 
 ## Average the map
-
+#beginCluster()
+#averaged.m1 = clusterR(stack.m1, mean)
+#endCluster()
 
 ```
 
-```{r}
-# Plot the result of the GLM over the Frontignan area
-# 1. crop the variables
-pred.glm.fronti
-plot(pred.glm.fronti)
 
-# add points
-df.sp1 = as.data.frame(sp1)
-points (df.sp1[which (df.sp1$Occurrence == 1), c(2,3)], 
-        pch = 16, col = "red", cex = 0.5)
-points (df.sp1[which (df.sp1$Occurrence == 0), c(2,3)], 
-        pch = 16, col = "blue", cex = 0.3)
-```
 
 
 

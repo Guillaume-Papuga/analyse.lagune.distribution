@@ -10,8 +10,8 @@ output: html_document
 ```{r build a mask}
 # Select all cells that represent permanent water
 ## threshold = 360 days
-hydro.c = mask(hydroperiod.93, p.bound) %>%
-  crop (p.bound)
+## !! Pour l'instant on réalise ça sur un extent mais attention si CROP >> objet "Spatial" pas SF
+hydro.c = raster::crop (hydroperiod.93, ext.practice)
 hydro.360 = reclassify (hydro.c, # the raster to be reclassified
                         matrix(c(0, 330, NA, 330, 367, 1, 367, 450, NA), ncol=3, byrow=TRUE))
 ## change to Polygon
@@ -20,6 +20,15 @@ hydro.360.v = rasterToPolygons(hydro.360,
                                na.rm=TRUE, 
                                digits=12, 
                                dissolve=TRUE)
+
+hydro.360.v = rasterToPolygons(hydro.c, 
+                               fun=function(x){x>340},
+                               n=4, 
+                               na.rm=TRUE, 
+                               digits=8, 
+                               dissolve=TRUE)
+
+
 
 # Delete all permanent water lying inside our presence lagoon
 ## There must be few but still we can have some artifacts
@@ -41,4 +50,21 @@ hydro.buf = buffer(hydro.360,
 writeRaster(x = pred.glm, 
             filename = "/home/papuga/Documents/couches_lag.temp/raw.layers/raw.res/test.pred.glm.crop.tif",
             overwrite=TRUE)
+```
+
+
+
+
+```{r}
+# Plot the result of the GLM over the Frontignan area
+# 1. crop the variables
+pred.glm.fronti
+plot(pred.glm.fronti)
+
+# add points
+df.sp1 = as.data.frame(sp1)
+points (df.sp1[which (df.sp1$Occurrence == 1), c(2,3)], 
+        pch = 16, col = "red", cex = 0.5)
+points (df.sp1[which (df.sp1$Occurrence == 0), c(2,3)], 
+        pch = 16, col = "blue", cex = 0.3)
 ```
