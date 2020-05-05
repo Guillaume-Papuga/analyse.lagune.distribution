@@ -18,6 +18,8 @@ library(dismo)
 library(rgdal)
 library(raster)
 library(nngeo)
+library (stars)
+library (terra)
 ```
 
 # Pense bête - a faire
@@ -49,11 +51,19 @@ The aim of this section is to build a database of occurence to train the model. 
 
 * Pre-processing
 
+# Setting
+```{r}
+## define the path to the folder "Sentinel"
+source = "/media/papuga/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/Sentinel/" # external memory / linux
+# source = "/home/papuga/Documents/couches_lag.temp/raw.layers/Sentinel/"  # computer memory / linux
+
+```
+
+
 ## a. Download the base layer
 ```{r}
 ## hydroperiod
 ## 1. Upload from computer
-source = "/media/papuga/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/Sentinel/" # folder path
 tile = list.files(source) # names of each tile
 
 # use a loop to extract each variable
@@ -101,6 +111,7 @@ p.res = res(hydroperiod.93)
 # due to the spatial extent of the project, it is difficult to map results
 # define a local extent to visualize a subset of results (Frontignan, Hérault, France)
 ext.fronti = extent (756670, 768435, 6257688, 6267642)
+ext.practice = extent (762364.9, 803269.3, 6256546, 6286295 )
 ```
 
 
@@ -145,9 +156,7 @@ The msavi layer is built as the median value of all images from 2019-02-01 to 20
 ```{r}
 ## msavi.spring
 ## 1. Upload from external drive
-source = "/media/papuga/My Passport for Mac/spatial.data/09.projets.specifiques/couches_lag.temp/raw.layers/Sentinel/" # folder path
 tile = list.files(source) # names of each tile
-# source = "/home/papuga/Documents/couches_lag.temp/raw.layers/Sentinel/"  # if done from my computer
 
 # use a loop to extract each variable
 for (i in tile){
@@ -193,13 +202,13 @@ The altitude layer is uploaded at a resolution of 75m, and resampled at 20m to m
 ```{r}
 ## altitude
 ## 1. Upload from external drive
-source = "/media/papuga//My Passport for Mac/spatial.data/02.geographie/bd.alti/BDALTIV2/1_DONNEES_LIVRAISON_2018-01-00245/BDALTIV2_MNT_75M_ASC_LAMB93_IGN69_FRANCE/" # folder path
+source.alt = "/media/papuga//My Passport for Mac/spatial.data/02.geographie/bd.alti/BDALTIV2/1_DONNEES_LIVRAISON_2018-01-00245/BDALTIV2_MNT_75M_ASC_LAMB93_IGN69_FRANCE/" # folder path
 code.tile = c("0675_6150", "0675_6225", "0675_6300", "0675_6375", "0750_6300", "0750_6375", "0825_6300", "0825_6375", "0900_6225", "0900_6300", "0900_6375", "0975_6225", "0975_6300", "0975_6375", "1050_6375") 
 tile = paste("BDALTIV2_75M_FXX_", code.tile, "_MNT_LAMB93_IGN69.asc", sep = "") # names of each tile
 
 # use a loop to extract each variable
 for (i in tile){
-  var.path.name = paste (source, i, sep = "") # paste the right name
+  var.path.name = paste (source.alt, i, sep = "") # paste the right name
   mnt = raster(var.path.name) # upload the raster 
   crs(mnt) = CRS('+init=EPSG:2154')# assign its CRS, here Lambert 93
   assign(paste("altitude_", i, sep = ""), mnt) # assign the raster a unique name (from its tile)
@@ -251,7 +260,7 @@ plot(altitude.93.c.adj)
 
 
 ### c. Environment-data stack
-```{r}
+#```{r}
 # Ecological variables
 ## Save each layer to the processed file so one don't have to run the script again
 ## Folder path has to be changed
@@ -266,7 +275,7 @@ writeRaster(msavi.93,
 writeRaster(altitude.93.c.adj, 
             paste ("/home/papuga/Documents/couches_lag.temp/processed_layers/",
                    "altitude.93.c.adj",".tif", sep = ""))
-```
+#```
 
 
 ```{r open layers}
@@ -281,7 +290,15 @@ ecov = stack (hydroperiod.93,
               msavi.93,
               altitude.93.c.adj)
 
-ecov.c = mask(ecov, p.bound) %>%
-  crop (p.bound)
+# crop to spatial extent
+st = Sys.time()
+lim = as(p.bound, Class = "Spatial")
+ecov.m = raster::mask(ecov, lim)
+ecov.c = raster::crop (ecov.m, lim)
+end = Sys.time()
+t1 = end-st
+
+# training area
+
 ```
 
